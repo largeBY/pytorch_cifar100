@@ -274,32 +274,29 @@ if __name__ == '__main__':
     #     writer.add_graph(net, input_tensor)
 
     # 创建检查点文件夹来保存模型
-    # 创建检查点文件夹来保存模型
-    if not os.path.exists(settings.CHECKPOINT_PATH):
-        os.makedirs(settings.CHECKPOINT_PATH)
-
-    # 修改 checkpoint_path，去掉时间戳部分
-    checkpoint_path = os.path.join(settings.CHECKPOINT_PATH, args.net, '{net}-{epoch}-{type}.pth')
+    if not os.path.exists(checkpoint_path):
+        os.makedirs(checkpoint_path)
+    checkpoint_path = os.path.join(checkpoint_path, '{net}-{epoch}-{type}.pth')
 
     best_acc = 0.0
     if args.resume:
-        best_weights = best_acc_weights(os.path.join(settings.CHECKPOINT_PATH, args.net))
+        best_weights = best_acc_weights(os.path.join(settings.CHECKPOINT_PATH, args.net, recent_folder))
         if best_weights:
-            weights_path = os.path.join(settings.CHECKPOINT_PATH, args.net, best_weights)
+            weights_path = os.path.join(settings.CHECKPOINT_PATH, args.net, recent_folder, best_weights)
             print('found best acc weights file:{}'.format(weights_path))
             print('load best training file to test acc...')
             net.load_state_dict(torch.load(weights_path))
             best_acc = eval_training(tb=False)
             print('best acc is {:0.2f}'.format(best_acc))
 
-        recent_weights_file = most_recent_weights(os.path.join(settings.CHECKPOINT_PATH, args.net))
+        recent_weights_file = most_recent_weights(os.path.join(settings.CHECKPOINT_PATH, args.net, recent_folder))
         if not recent_weights_file:
             raise Exception('no recent weights file were found')
-        weights_path = os.path.join(settings.CHECKPOINT_PATH, args.net, recent_weights_file)
+        weights_path = os.path.join(settings.CHECKPOINT_PATH, args.net, recent_folder, recent_weights_file)
         print('loading weights file {} to resume training.....'.format(weights_path))
         net.load_state_dict(torch.load(weights_path))
 
-        resume_epoch = last_epoch(os.path.join(settings.CHECKPOINT_PATH, args.net))
+        resume_epoch = last_epoch(os.path.join(settings.CHECKPOINT_PATH, args.net, recent_folder))
 
     for epoch in range(1, settings.EPOCH + 1):
         if epoch > args.warm:

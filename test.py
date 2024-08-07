@@ -1,5 +1,5 @@
-#test.py
-#!/usr/bin/env python3
+# test.py
+# !/usr/bin/env python3
 
 """ test neuron network performace
 print top1 and top5 err on test dataset
@@ -26,17 +26,28 @@ if __name__ == '__main__':
     parser.add_argument('-weights', type=str, required=True, help='the weights file you want to test')
     parser.add_argument('-gpu', action='store_true', default=False, help='use gpu or not')
     parser.add_argument('-b', type=int, default=16, help='batch size for dataloader')
+    parser.add_argument('-dataset', type=str, default='cifar100', help='set dataset')
     args = parser.parse_args()
 
     net = get_network(args)
 
-    cifar100_test_loader = get_test_dataloader(
-        settings.CIFAR100_TRAIN_MEAN,
-        settings.CIFAR100_TRAIN_STD,
-        #settings.CIFAR100_PATH,
-        num_workers=4,
-        batch_size=args.b,
-    )
+    if args.dataset == "VOCSegmentation":
+        test_loader = get_test_dataloader(
+            args,
+            settings.VOCSEGMENTATION_TRAIN_MEAN,
+            settings.VOCSEGMENTATION_TRAIN_STD,
+            num_workers=4,
+            batch_size=args.b
+        )
+    else:
+        test_loader = get_test_dataloader(
+            args,
+            settings.CIFAR100_TRAIN_MEAN,
+            settings.CIFAR100_TRAIN_STD,
+            # settings.CIFAR100_PATH,
+            num_workers=4,
+            batch_size=args.b,
+        )
 
     net.load_state_dict(torch.load(args.weights))
     print(net)
@@ -47,26 +58,38 @@ if __name__ == '__main__':
     total = 0
 
     with torch.no_grad():
-        for n_iter, (image, label) in enumerate(cifar100_test_loader):
-            print("iteration: {}\ttotal {} iterations".format(n_iter + 1, len(cifar100_test_loader)))
+        for n_iter, (image, label) in enumerate(test_loader):
+            print("iteration: {}\ttotal {} iterations".format(n_iter + 1, len(test_loader)))
 
             if args.gpu:
+                label = label.long()
                 image = image.cuda()
                 label = label.cuda()
                 print('GPU INFO.....')
                 print(torch.cuda.memory_summary(), end='')
 
-
+            # print(f"Labels shape: {label.shape}")
             output = net(image)
             _, pred = output.topk(5, 1, largest=True, sorted=True)
+            # print(f"pred: {pred.shape}")
+            if args.dataset == "VOCSegmentation":
+                label = label.view(label.size(0), 1, 32, 32)
+                # print(f"Labels shape: {label.shape}")
+                # label = label.unsqueeze(1).expand_as(pred)
+                correct = pred.eq(label).float()
+            elif args.dataset == "VOCDetection":
+                label = label.view(label.size(0), 1, 32, 32)
+                # print(f"Labels shape: {label.shape}")
+                # label = label.unsqueeze(1).expand_as(pred)
+                correct = pred.eq(label).float()
+            else:
+                label = label.view(label.size(0), -1).expand_as(pred)
+                correct = pred.eq(label).float()
 
-            label = label.view(label.size(0), -1).expand_as(pred)
-            correct = pred.eq(label).float()
-
-            #compute top 5
+            # compute top 5
             correct_5 += correct[:, :5].sum()
 
-            #compute top1
+            # compute top1
             correct_1 += correct[:, :1].sum()
 
     if args.gpu:
@@ -74,6 +97,6 @@ if __name__ == '__main__':
         print(torch.cuda.memory_summary(), end='')
 
     print()
-    print("Top 1 err: ", 1 - correct_1 / len(cifar100_test_loader.dataset))
-    print("Top 5 err: ", 1 - correct_5 / len(cifar100_test_loader.dataset))
+    print("Top 1 err: ", 1 - correct_1 / len(test_loader.dataset))
+    print("Top 5 err: ", 1 - correct_5 / len(test_loader.dataset))
     print("Parameter numbers: {}".format(sum(p.numel() for p in net.parameters())))

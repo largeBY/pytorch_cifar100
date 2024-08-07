@@ -20,18 +20,27 @@ def get_network(args):
     """ return given network
     """
 
-    if args.net == 'vgg16':
+    if args.net == 'vgg16_bn':
         from models.vgg import vgg16_bn
         net = vgg16_bn()
-    elif args.net == 'vgg13':
+    elif args.net == 'vgg13_bn':
         from models.vgg import vgg13_bn
         net = vgg13_bn()
-    elif args.net == 'vgg11':
+    elif args.net == 'vgg11_bn':
         from models.vgg import vgg11_bn
         net = vgg11_bn()
-    elif args.net == 'vgg19':
+    elif args.net == 'vgg19_bn':
         from models.vgg import vgg19_bn
         net = vgg19_bn()
+    elif args.net == 'vgg19':
+        from models.vgg import vgg19
+        net = vgg19()
+    elif args.net == 'cascadedfcn':
+        from models.cascadedfcn import cascaded_fcn
+        net = cascaded_fcn()
+    elif args.net == 'voc':
+        from models.vocnet import vocnet
+        net = vocnet()
     elif args.net == 'densenet121':
         from models.densenet import densenet121
         net = densenet121()
@@ -163,7 +172,32 @@ def get_network(args):
     return net
 
 
-def get_training_dataloader(mean, std, batch_size=16, num_workers=2, shuffle=True):
+def segmentation_custom_collate_fn(batch):
+    images = []
+    targets = []
+
+    for sample in batch:
+        images.append(sample[0])
+        target = sample[1]
+
+        if target.ndim == 3:
+            target = target.squeeze(0)  # 移除不必要的维度
+
+        targets.append(target)
+
+    images = torch.stack(images, dim=0)
+    targets = torch.stack(targets, dim=0)
+
+    return images, targets
+
+
+def detection_custom_collate_fn(batch):
+    images, targets = zip(*batch)
+    images = torch.stack(images, dim=0)
+    return images, list(targets)
+
+
+def get_training_dataloader(args, mean, std, batch_size=16, num_workers=2, shuffle=True):
     """ return training dataloader
     Args:
         mean: mean of cifar100 training dataset
@@ -175,22 +209,119 @@ def get_training_dataloader(mean, std, batch_size=16, num_workers=2, shuffle=Tru
     Returns: train_data_loader:torch dataloader object
     """
 
-    transform_train = transforms.Compose([
-        #transforms.ToPILImage(),
-        transforms.RandomCrop(32, padding=4),
-        transforms.RandomHorizontalFlip(),
-        transforms.RandomRotation(15),
-        transforms.ToTensor(),
-        transforms.Normalize(mean, std)
-    ])
-    #cifar100_training = CIFAR100Train(path, transform=transform_train)
-    cifar100_training = torchvision.datasets.CIFAR100(root='./data', train=True, download=True, transform=transform_train)
-    cifar100_training_loader = DataLoader(
-        cifar100_training, shuffle=shuffle, num_workers=num_workers, batch_size=batch_size)
+    # cifar100_training = CIFAR100Train(path, transform=transform_train)
+    if args.dataset == 'cifar100':
+        transform_train = transforms.Compose([
+            # transforms.ToPILImage(),
+            transforms.RandomCrop(32, padding=4),
+            transforms.RandomHorizontalFlip(),
+            transforms.RandomRotation(15),
+            transforms.ToTensor(),
+            transforms.Normalize(mean, std)
+        ])
+        training = torchvision.datasets.CIFAR100(root='./data',
+                                                 train=True,
+                                                 download=True,
+                                                 transform=transform_train)
+        training_loader = DataLoader(
+            training,
+            shuffle=shuffle,
+            num_workers=num_workers,
+            batch_size=batch_size)
+    elif args.dataset == 'VOCSegmentation':
+        transform_train = transforms.Compose([
+            transforms.Resize((256, 256)),  # 调整到适当的尺寸
+            transforms.RandomCrop(224),  # 可以根据需要修改尺寸
+            transforms.RandomHorizontalFlip(),
+            transforms.RandomRotation(15),
+            transforms.ToTensor(),
+            transforms.Normalize(mean, std)
+        ])
+        target_transform = transforms.Compose([
+            transforms.Resize((32, 32)),  # 调整到适当的尺寸
+            transforms.RandomHorizontalFlip(),
+            transforms.RandomRotation(15),
+            transforms.ToTensor()
+        ])
 
-    return cifar100_training_loader
+        training = torchvision.datasets.VOCSegmentation(root='./data',
+                                                        year="2012",
+                                                        download=True,
+                                                        image_set="train",
+                                                        transform=transform_train,
+                                                        target_transform=target_transform)
+        training_loader = DataLoader(
+            training,
+            shuffle=shuffle,
+            num_workers=0,
+            batch_size=batch_size,
+            collate_fn=segmentation_custom_collate_fn)
+    elif args.dataset == 'VOCDetection':
+        transform_train = transforms.Compose([
+            # transforms.ToPILImage(),
+            transforms.Resize((256, 256)),  # 调整到适当的尺寸
+            transforms.RandomCrop(224),  # 可以根据需要修改尺寸
+            transforms.RandomHorizontalFlip(),
+            transforms.RandomRotation(15),
+            transforms.ToTensor(),
+            transforms.Normalize(mean, std)
+        ])
 
-def get_test_dataloader(mean, std, batch_size=16, num_workers=2, shuffle=True):
+        CLASSES = [
+            "aeroplane", "bicycle", "bird", "boat", "bottle",
+            "bus", "car", "cat", "chair", "cow",
+            "diningtable", "dog", "horse", "motorbike", "person",
+            "pottedplant", "sheep", "sofa", "train", "tvmonitor"
+        ]
+
+        def target_transform(target):
+            objects = target['annotation']['object']
+
+            if not isinstance(objects, list):
+                objects = [objects]  # 如果只有一个对象，转换为列表
+
+            boxes = []
+            labels = []
+
+            for obj in objects:
+                bndbox = obj['bndbox']
+                xmin = int(bndbox['xmin'])
+                ymin = int(bndbox['ymin'])
+                xmax = int(bndbox['xmax'])
+                ymax = int(bndbox['ymax'])
+
+                boxes.append([xmin, ymin, xmax, ymax])
+                labels.append(CLASSES.index(obj['name']))  # 假设 CLASSES 是类别名的列表
+
+            boxes = torch.tensor(boxes, dtype=torch.float32)
+            labels = torch.tensor(labels, dtype=torch.int64)
+
+            return {'boxes': boxes, 'labels': labels}
+
+        training = torchvision.datasets.VOCDetection(root='./data',
+                                                     year="2012",
+                                                     download=True,
+                                                     image_set="train",
+                                                     transform=transform_train,
+                                                     target_transform=target_transform)
+        training_loader = DataLoader(
+            training,
+            shuffle=shuffle,
+            num_workers=num_workers,
+            batch_size=batch_size,
+            collate_fn=detection_custom_collate_fn)
+    else:
+        print('the dataset name you have entered is not supported yet')
+        sys.exit()
+
+    # for images, labels in training_loader:
+    #     print(f'Batch size: {images.size(0)}, Image size: {images.size()}')
+    #     break  # 只打印第一个批次的数据
+
+    return training_loader
+
+
+def get_test_dataloader(args, mean, std, batch_size=16, num_workers=2, shuffle=True):
     """ return training dataloader
     Args:
         mean: mean of cifar100 test dataset
@@ -202,16 +333,71 @@ def get_test_dataloader(mean, std, batch_size=16, num_workers=2, shuffle=True):
     Returns: cifar100_test_loader:torch dataloader object
     """
 
-    transform_test = transforms.Compose([
-        transforms.ToTensor(),
-        transforms.Normalize(mean, std)
-    ])
-    #cifar100_test = CIFAR100Test(path, transform=transform_test)
-    cifar100_test = torchvision.datasets.CIFAR100(root='./data', train=False, download=True, transform=transform_test)
-    cifar100_test_loader = DataLoader(
-        cifar100_test, shuffle=shuffle, num_workers=num_workers, batch_size=batch_size)
+    # cifar100_test = CIFAR100Test(path, transform=transform_test)
+    if args.dataset == 'cifar100':
+        transform_test = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Normalize(mean, std)
+        ])
+        test = torchvision.datasets.CIFAR100(root='./data',
+                                             train=False,
+                                             download=True,
+                                             transform=transform_test)
+        test_loader = DataLoader(
+            test,
+            shuffle=shuffle,
+            num_workers=num_workers,
+            batch_size=batch_size)
+    elif args.dataset == 'VOCSegmentation':
+        transform_test = transforms.Compose([
+            transforms.Resize((256, 256)),
+            transforms.CenterCrop(224),
+            transforms.ToTensor(),
+            transforms.Normalize(mean, std)
+        ])
+        target_transform_test = transforms.Compose([
+            transforms.Resize((32, 32)),
+            transforms.ToTensor()
+        ])
 
-    return cifar100_test_loader
+        test = torchvision.datasets.VOCSegmentation(root='./data',
+                                                    year="2012",
+                                                    download=True,
+                                                    image_set="val",
+                                                    transform=transform_test,
+                                                    target_transform=target_transform_test)
+        test_loader = DataLoader(
+            test, shuffle=shuffle,
+            num_workers=num_workers,
+            batch_size=batch_size,
+            collate_fn=segmentation_custom_collate_fn)
+    elif args.dataset == 'VOCDetection':
+        transform_test = transforms.Compose([
+            transforms.Resize((256, 256)),
+            transforms.CenterCrop(224),
+            transforms.ToTensor(),
+            transforms.Normalize(mean, std)
+        ])
+        target_transform_test = transforms.Compose([
+            transforms.Resize((32, 32)),
+            transforms.ToTensor()
+        ])
+        test = torchvision.datasets.VOCDetection(root='./data',
+                                                 year="2012",
+                                                 download=True,
+                                                 image_set="val",
+                                                 transform=transform_test,
+                                                 target_transform=target_transform_test)
+        test_loader = DataLoader(
+            test, shuffle=shuffle,
+            num_workers=num_workers,
+            batch_size=batch_size,
+            collate_fn=detection_custom_collate_fn)
+    else:
+        print('the dataset name you have entered is not supported yet')
+        sys.exit()
+
+    return test_loader
 
 def compute_mean_std(cifar100_dataset):
     """compute the mean and std of cifar100 dataset

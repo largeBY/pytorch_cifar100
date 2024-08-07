@@ -18,6 +18,7 @@ cfg = {
     'E' : [64, 64, 'M', 128, 128, 'M', 256, 256, 256, 256, 'M', 512, 512, 512, 512, 'M', 512, 512, 512, 512, 'M']
 }
 
+
 class VGG(nn.Module):
 
     def __init__(self, features, num_class=100):
@@ -41,6 +42,7 @@ class VGG(nn.Module):
 
         return output
 
+
 def make_layers(cfg, batch_norm=False):
     layers = []
 
@@ -60,16 +62,24 @@ def make_layers(cfg, batch_norm=False):
 
     return nn.Sequential(*layers)
 
+
 def vgg11_bn():
     return VGG(make_layers(cfg['A'], batch_norm=True))
+
 
 def vgg13_bn():
     return VGG(make_layers(cfg['B'], batch_norm=True))
 
+
 def vgg16_bn():
     return VGG(make_layers(cfg['D'], batch_norm=True))
 
+
 def vgg19_bn():
     return VGG(make_layers(cfg['E'], batch_norm=True))
+
+
+def vgg19():
+    return VGG(make_layers(cfg['E'], batch_norm=False))
 
 

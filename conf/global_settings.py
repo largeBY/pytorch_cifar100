@@ -5,34 +5,40 @@ author baiyu
 import os
 from datetime import datetime
 
-#CIFAR100 dataset path (python version)
-#CIFAR100_PATH = '/nfs/private/cifar100/cifar-100-python'
+# CIFAR100 dataset path (python version)
+# CIFAR100_PATH = '/nfs/private/cifar100/cifar-100-python'
 
-#mean and std of cifar100 dataset
+# cifar100 数据集的平均值和标准差
 CIFAR100_TRAIN_MEAN = (0.5070751592371323, 0.48654887331495095, 0.4409178433670343)
 CIFAR100_TRAIN_STD = (0.2673342858792401, 0.2564384629170883, 0.27615047132568404)
 
-#CIFAR100_TEST_MEAN = (0.5088964127604166, 0.48739301317401956, 0.44194221124387256)
-#CIFAR100_TEST_STD = (0.2682515741720801, 0.2573637364478126, 0.2770957707973042)
+VOCSEGMENTATION_TRAIN_MEAN = (0.4567978, 0.44313193, 0.40829842)
+VOCSEGMENTATION_TRAIN_STD = (0.23698016, 0.23328739, 0.23898675)
 
-#directory to save weights file
+VOCDETECTION_TRAIN_MEAN = (0.45704721, 0.43824777, 0.40617327)
+VOCDETECTION_TRAIN_STD = (0.2390859, 0.23509646, 0.23973087)
+
+# CIFAR100_TEST_MEAN = (0.5088964127604166, 0.48739301317401956, 0.44194221124387256)
+# CIFAR100_TEST_STD = (0.2682515741720801, 0.2573637364478126, 0.2770957707973042)
+
+# 保存权重文件的目录
 CHECKPOINT_PATH = 'checkpoint'
 
-#total training epoches
+# 总训练次数
 EPOCH = 200
 MILESTONES = [60, 120, 160]
 
-#initial learning rate
-#INIT_LR = 0.1
+# 初始学习率
+# INIT_LR = 0.1
 
 DATE_FORMAT = '%A_%d_%B_%Y_%Hh_%Mm_%Ss'
-#time of we run the script
+# 我们运行脚本的时间
 TIME_NOW = datetime.now().strftime(DATE_FORMAT)
 
-#tensorboard log dir
+# tensorboard 日志目录
 LOG_DIR = 'runs'
 
-#save weights file per SAVE_EPOCH epoch
+# 每个 SAVE_EPOCH 时期保存权重文件
 SAVE_EPOCH = 10
 
 
